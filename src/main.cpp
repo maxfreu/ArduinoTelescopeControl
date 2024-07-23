@@ -2,12 +2,19 @@
 #include <SoftwareSerial.h>     // Software serial for the UART to TMC2209 - https://www.arduino.cc/en/Reference/softwareSerial
 #include <Streaming.h>          // For serial debugging output - https://www.arduino.cc/reference/en/libraries/streaming/
 
-#define EN_PIN           2      // Enable - PURPLE
-#define DIR_PIN          9      // Direction - WHITE
-#define STEP_PIN         8      // Step - ORANGE
-// #define SW_SCK           5      // Software Slave Clock (SCK) - BLUE
-#define SW_TX            6      // SoftwareSerial receive pin - BROWN
+#define EN_PIN           2
+#define SELECTION_PIN    3      // LOW=stealth chop, HIGH=spread cycle
+#define SW_TX            4      // SoftwareSerial receive pin - BROWN
 #define SW_RX            5      // SoftwareSerial transmit pin - YELLOW
+#define STEP_PIN         6
+#define DIR_PIN          7
+
+#define FASTER_BUTTON_PIN 8
+#define SLOWER_BUTTON_PIN 9
+#define MODE_SWITCH_PIN  10
+#define POTI_PIN         A7
+
+// #define SW_SCK           5      // Software Slave Clock (SCK) - BLUE
 #define DRIVER_ADDRESS   0b00   // TMC2209 Driver address according to MS1 and MS2
 #define R_SENSE 0.11f           // SilentStepStick series use 0.11 ...and so does my fysetc TMC2209 (?)
 
@@ -34,7 +41,13 @@ void setup() {
     SoftSerial.begin(115200);           // initialize software serial for UART motor control
     TMCdriver.beginSerial(115200);      // Initialize UART
 
-    pinMode(EN_PIN, OUTPUT);           // Set pinmodes
+    // Pin modes
+    pinMode(POTI_PIN, INPUT_PULLUP);
+    pinMode(SLOWER_BUTTON_PIN, INPUT_PULLUP);
+    pinMode(FASTER_BUTTON_PIN, INPUT_PULLUP);
+    pinMode(MODE_SWITCH_PIN, INPUT_PULLUP);
+
+    pinMode(EN_PIN, OUTPUT);
     pinMode(STEP_PIN, OUTPUT);
     pinMode(DIR_PIN, OUTPUT);
     digitalWrite(EN_PIN, LOW);         // Enable TMC2209 board  
@@ -58,23 +71,65 @@ void setup() {
 
 
 void loop() {
-    // initialize();
-    if (Serial.available() > 0) {
-        String command = Serial.readStringUntil('#');
-        parse_serial(command);
-        Serial.readString(); // Clear the buffer
+    // read control state
+    bool mode = digitalRead(MODE_SWITCH_PIN);
+
+    if (mode == 0){
+        // Computer controlled mode
+        if (Serial.available() > 0) {
+            String command = Serial.readStringUntil('#');
+            parse_serial(command);
+            Serial.readString(); // Clear the buffer
+        }
+
+        if (Serial.availableForWrite() >= 16 && millis() - last_sg_read_ms > 1000) {
+            Serial << "OFS: " << TMCdriver.pwm_ofs_auto() << endl;
+            uint16_t stallguard_result = TMCdriver.SG_RESULT();
+            char str[16];
+            sprintf(str, "SG %d", stallguard_result);
+            Serial.println(str);
+            last_sg_read_ms = millis();
+        }
+    }
+    else {
+        // hand controlled mode
+        bool faster_button_pressed = digitalRead(FASTER_BUTTON_PIN);
+        bool slower_button_pressed = digitalRead(SLOWER_BUTTON_PIN);
+        int poti_state = analogRead(POTI_PIN);
+        int offset = poti_to_speed_offset(poti_state);
+        
+        if (Serial.availableForWrite()){
+            Serial << "poti: " << poti_state << endl;
+            Serial << "offset: " << offset << endl;
+        }
+
+        if (faster_button_pressed && slower_button_pressed){
+
+        }
+        else if (faster_button_pressed)
+        {
+            long speed = sidereal_speed + offset;
+            TMCdriver.shaft(true);
+            TMCdriver.VACTUAL(speed);
+        }
+        else if (slower_button_pressed)
+        {
+            long speed = sidereal_speed - offset;
+            if (speed >= 0) {
+                TMCdriver.shaft(false);
+            }
+            else {
+                TMCdriver.shaft(true);
+            }
+            TMCdriver.VACTUAL(speed);
+        }
+        else {
+            TMCdriver.shaft(true);
+            TMCdriver.VACTUAL(sidereal_speed);
+        }
     }
 
-    if (Serial.availableForWrite() >= 16 && millis() - last_sg_read_ms > 1000) {
-        Serial << "OFS: " << TMCdriver.pwm_ofs_auto() << endl;
-        uint16_t stallguard_result = TMCdriver.SG_RESULT();
-        char str[16];
-        sprintf(str, "SG %d", stallguard_result);
-        Serial.println(str);
-        last_sg_read_ms = millis();
-    }
-
-    delay(10);
+    delay(1000);
 }
 
 
@@ -115,4 +170,13 @@ void parse_serial(String command) {
         // Unknown command
         Serial.println("Unknown command");
     }
+}
+
+int poti_to_speed_offset(int poti_state){
+    int max_speed = sidereal_speed * 100;
+    int poti_offset = 0;
+    int poti_max = 1023;
+    // map poti input to interval 0..1
+    float state = (poti_state - poti_offset) / (poti_max - poti_offset);
+    return int(state * state * state * state * max_speed);
 }
