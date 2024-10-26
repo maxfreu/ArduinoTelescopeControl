@@ -3,7 +3,7 @@
 #include <SoftwareSerial.h>     // Software serial for the UART to TMC2209 - https://www.arduino.cc/en/Reference/softwareSerial
 #include <Streaming.h>          // For serial debugging output - https://www.arduino.cc/reference/en/libraries/streaming/
 #include <math.h>
-#include <FYSETC_TMC_2209_v3.h>
+#include <FYSETC_TMC_2209_v4.h>
 
 #define FASTER_BUTTON_PIN 8
 #define SLOWER_BUTTON_PIN 9
@@ -65,24 +65,21 @@ void setup() {
     pinMode(DIR_PIN, OUTPUT);
     pinMode(LED_BUILTIN, OUTPUT);
 
-    digitalWrite(EN_PIN, LOW);         // Enable TMC2209 board
     digitalWrite(LED_BUILTIN, LOW);
 
-    delay(10);
+    delay(100);
     TMCdriver.begin();                 // UART: Init SW UART (if selected) with default 115200 baudrate
-    delay(10);
-    TMCdriver.toff(5);                 // Enables driver in software
+    delay(100);
     TMCdriver.rms_current(500);        // Set motor RMS current
     TMCdriver.microsteps(256);         // Set microsteps
 
     TMCdriver.en_spreadCycle(false);
     TMCdriver.pwm_autoscale(true);     // Needed for stealthChop
 
-    // TMCdriver.VACTUAL(0);
-    // TMCdriver.shaft(dir);              // SET DIRECTION
-    // delay(200);
-    // TMCdriver.VACTUAL(0);
-    // TMCdriver.shaft(dir);              // SET DIRECTION
+    delay(200);
+
+    digitalWrite(EN_PIN, LOW);         // Enable TMC2209 board
+    TMCdriver.toff(5);                 // Enables driver in software
 }
 
 
@@ -139,10 +136,11 @@ void loop() {
         {
             long speed = sidereal_speed - offset;
             if (speed >= 0) {
-                TMCdriver.shaft(false);
+                TMCdriver.shaft(true);
             }
             else {
-                TMCdriver.shaft(true);
+                TMCdriver.shaft(false);
+                speed = -speed;
             }
             TMCdriver.VACTUAL(speed);
         }
