@@ -19,7 +19,11 @@ SoftwareSerial SoftSerial(SW_RX, SW_TX);                          // Be sure to 
 TMC2209Stepper TMCdriver(&SoftSerial, R_SENSE, DRIVER_ADDRESS);   // Create TMC driver
 
 // const long sidereal_speed = 5/(3600*(86164 / 86400))*48*25600/0.715;
-const long sidereal_speed = 2393;
+// const long sidereal_speed = 2393;
+// with correction after measuring the actual speed at ca 9C temperature
+// correction factor was 0.9784650
+const long sidereal_speed = 2341;
+
 // const long sidereal_speed = 200000;
 const long RA_slow = sidereal_speed * 0.5;
 const long RA_fast = sidereal_speed * 1.5;
